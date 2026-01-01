@@ -36,8 +36,4 @@ project
 
 The script will skip the stacks with no ports.
 
-
-
-## Note
-
-This script assumes all of the containers in the stack have `container_name` field before the `ports` field.
+The script will use the `container_name` field if present, otherwise it will use the service name from the docker-compose file.

@@ -25,50 +25,78 @@ def read_docker_compose_file(file):
     with open(file, 'r') as f:
         # Read the file
         lines = f.readlines()
-        # Create a list to store the name and ports of the containers
-        containers = {
-        }
+        # Create a dict to store the name and ports of the containers
+        containers = {}
 
-        # Store the name of the container
-        container_name = ''
+        # Store the current service name being processed
+        current_service = None
+        # Track indentation level to know when we're inside a service
+        in_services = False
+        service_indent = 0
+        
         index = 0
 
         # Loop through each line in the file
         while index < len(lines):
             line = lines[index]
-            # If the line contains the name of the container
-            if 'container_name' in line:
-                # Split the line by the colon
-                splitLine = line.split(':')
-                # Add the name of the container to the map
-                containers[splitLine[1].strip()] = {}
-                container_name = splitLine[1].strip()
-                # print('Found container: ' + container_name +
-                # ' line: ' + str(lines.index(line)))
-            # If the line contains the ports of the container
-            if 'ports' in line:
-                # Move to the next line
-                line = lines[index + 1]
+            stripped_line = line.lstrip()
+            current_indent = len(line) - len(stripped_line)
+            
+            # Check if we're in the services section
+            if stripped_line.startswith('services:'):
+                in_services = True
+                service_indent = current_indent
                 index += 1
-
-                # Create a list to store the ports
-                ports = []
-
-                # Loop through the next lines if the next line contains a port
-                while check_port(line) != -1:
-                    # print(container_name + ' ' +
-                    # check_port(line) + ' ' + str(lines.index(line)))
-                    # Add the port to the list of ports
-                    ports.append(check_port(line))
-                    # Read the next line
-                    line = lines[index + 1]
+                continue
+            
+            # If we're in services section, identify service names
+            if in_services and current_indent == service_indent + 2 and stripped_line and not stripped_line.startswith('-') and ':' in stripped_line:
+                # This is a service definition (e.g., "web:", "database:")
+                service_name = stripped_line.split(':')[0].strip()
+                # Only consider this a service if it's not a known property
+                if service_name not in ['image', 'ports', 'container_name', 'environment', 'volumes', 'networks', 'depends_on', 'restart', 'command', 'version']:
+                    current_service = service_name
+                    if current_service not in containers:
+                        containers[current_service] = {}
+            
+            # If we have a current service, look for container_name or ports
+            if current_service:
+                # Check for container_name
+                if 'container_name:' in stripped_line:
+                    splitLine = stripped_line.split(':', 1)
+                    if len(splitLine) > 1:
+                        container_name = splitLine[1].strip()
+                        containers[current_service]['container_name'] = container_name
+                
+                # Check for ports
+                if stripped_line.startswith('ports:'):
+                    # Move to the next line to read port values
                     index += 1
-
-                # Add the list of ports to the map
-                containers[container_name]['ports'] = ports
+                    if index >= len(lines):
+                        break
+                    
+                    # Create a list to store the ports
+                    ports = []
+                    
+                    # Loop through the next lines if the next line contains a port
+                    while index < len(lines):
+                        line = lines[index]
+                        port_value = check_port(line)
+                        if port_value != -1:
+                            ports.append(port_value)
+                            index += 1
+                        else:
+                            # No more ports, exit the loop
+                            break
+                    
+                    # Add the list of ports to the service
+                    containers[current_service]['ports'] = ports
+                    # Continue from current index (already incremented in loop)
+                    continue
+            
             index += 1
 
-    # Return the list of name and ports of the containers
+    # Return the dict with service data
     return containers
 
 
@@ -77,12 +105,15 @@ def write_ports_file(stacks):
     # Open the ports.md file
     with open('ports.md', 'w') as f:
         for stack in stacks:
-            for container in stacks[stack]:
-                # Check if container has ports
-                if 'ports' in stacks[stack][container]:
-                    # Write the name of the container and the ports to the ports.md file
-                    f.write('## ' + container + '\n')
-                    for port in stacks[stack][container]['ports']:
+            for service_name in stacks[stack]:
+                service = stacks[stack][service_name]
+                # Check if service has ports
+                if 'ports' in service:
+                    # Use container_name if available, otherwise use service name
+                    display_name = service.get('container_name', service_name)
+                    # Write the name and the ports to the ports.md file
+                    f.write('## ' + display_name + '\n')
+                    for port in service['ports']:
                         f.write(' - ' + port + '\n')
                     f.write('\n')
 
