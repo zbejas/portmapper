@@ -66,6 +66,10 @@ def read_docker_compose_file(file):
                     splitLine = stripped_line.split(':', 1)
                     if len(splitLine) > 1:
                         container_name = splitLine[1].strip()
+                        # Remove surrounding quotes if present
+                        if (container_name.startswith('"') and container_name.endswith('"')) or \
+                           (container_name.startswith("'") and container_name.endswith("'")):
+                            container_name = container_name[1:-1]
                         containers[current_service]['container_name'] = container_name
                 
                 # Check for ports
